@@ -158,7 +158,8 @@ public class CrossOriginFilter implements Filter
     private boolean anyHeadersAllowed;
     private List<Pattern> allowedOrigins = new ArrayList<Pattern>();
     private List<Pattern> allowedTimingOrigins = new ArrayList<Pattern>();
-    private List<String> allowedMethods = new ArrayList<String>();
+    private String  allowedMethodsCommify;
+    private Pattern allowedMethodsPattern;
     private List<String> allowedHeaders = new ArrayList<String>();
     private List<String> exposedHeaders = new ArrayList<String>();
     private int preflightMaxAge;
@@ -174,10 +175,13 @@ public class CrossOriginFilter implements Filter
         anyTimingOriginAllowed = generateAllowedOrigins(allowedTimingOrigins, allowedTimingOriginsConfig, DEFAULT_ALLOWED_TIMING_ORIGINS);
 
         String allowedMethodsConfig = config.getInitParameter(ALLOWED_METHODS_PARAM);
+        List<String> allowedMethods;
         if (allowedMethodsConfig == null)
-            allowedMethods.addAll(DEFAULT_ALLOWED_METHODS);
+            allowedMethods = DEFAULT_ALLOWED_METHODS;
         else
-            allowedMethods.addAll(Arrays.asList(StringUtil.csvSplit(allowedMethodsConfig)));
+            allowedMethods = Arrays.asList(StringUtil.csvSplit(allowedMethodsConfig));
+        allowedMethodsCommify = commify(allowedMethods);
+        allowedMethodsPattern = patternize(allowedMethods);
 
         String allowedHeadersConfig = config.getInitParameter(ALLOWED_HEADERS_PARAM);
         if (allowedHeadersConfig == null)
@@ -412,7 +416,7 @@ public class CrossOriginFilter implements Filter
             response.setHeader(ACCESS_CONTROL_ALLOW_CREDENTIALS_HEADER, "true");
         if (preflightMaxAge > 0)
             response.setHeader(ACCESS_CONTROL_MAX_AGE_HEADER, String.valueOf(preflightMaxAge));
-        response.setHeader(ACCESS_CONTROL_ALLOW_METHODS_HEADER, commify(allowedMethods));
+        response.setHeader(ACCESS_CONTROL_ALLOW_METHODS_HEADER, allowedMethodsCommify);
         if (anyHeadersAllowed)
             response.setHeader(ACCESS_CONTROL_ALLOW_HEADERS_HEADER, commify(headersRequested));
         else
@@ -423,10 +427,16 @@ public class CrossOriginFilter implements Filter
     {
         String accessControlRequestMethod = request.getHeader(ACCESS_CONTROL_REQUEST_METHOD_HEADER);
         LOG.debug("{} is {}", ACCESS_CONTROL_REQUEST_METHOD_HEADER, accessControlRequestMethod);
+        boolean result = isMethodAllowed(allowedMethodsPattern, accessControlRequestMethod);
+        LOG.debug("Method {} is" + (result ? "" : " not") + " among allowed methods {}", accessControlRequestMethod, allowedMethodsCommify);
+        return result;
+    }
+
+    static boolean isMethodAllowed(final Pattern allowedMethodsPattern, final String method) 
+    {
         boolean result = false;
-        if (accessControlRequestMethod != null)
-            result = allowedMethods.contains(accessControlRequestMethod);
-        LOG.debug("Method {} is" + (result ? "" : " not") + " among allowed methods {}", accessControlRequestMethod, allowedMethods);
+        if (allowedMethodsPattern != null && method != null)
+            result = allowedMethodsPattern.matcher(method).matches();
         return result;
     }
 
@@ -490,11 +500,41 @@ public class CrossOriginFilter implements Filter
         return builder.toString();
     }
 
+    /** 
+     * creates a pattern to match any of a list of  string
+     * If the input list is ["foo, "bar"] it will generate
+     * a Pattern for the regex "(\\Efoo\\E|\\Ebar\\E) 
+     */
+    static Pattern patternize(final List<String> strings) 
+    {
+        final StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < strings.size(); ++i)
+        {
+            final String string = strings.get(i);
+            if (string.trim().isEmpty()) break;
+            
+            if (builder.length() == 0) 
+                builder.append('(');
+            else
+                builder.append('|');
+            
+            builder.append(Pattern.quote(string));
+        }
+        Pattern ret;
+        if (builder.length() > 0) 
+            ret = Pattern.compile(builder.append(")").toString());
+        else 
+            ret = null;
+            
+        return ret;
+    }
+    
     public void destroy()
     {
         anyOriginAllowed = false;
         allowedOrigins.clear();
-        allowedMethods.clear();
+        allowedMethodsCommify = null;
+        allowedMethodsPattern = null;
         allowedHeaders.clear();
         preflightMaxAge = 0;
         allowCredentials = false;

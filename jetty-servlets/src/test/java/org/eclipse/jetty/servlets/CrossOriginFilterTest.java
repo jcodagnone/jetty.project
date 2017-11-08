@@ -19,6 +19,7 @@
 package org.eclipse.jetty.servlets;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -581,6 +582,24 @@ public class CrossOriginFilterTest
         Assert.assertTrue (CrossOriginFilter.originMatches(allowedOrigins , "example.foo"));
         Assert.assertFalse(CrossOriginFilter.originMatches(allowedOrigins , "xxfoo.bar"));
         Assert.assertFalse(CrossOriginFilter.originMatches(allowedOrigins , "foo.barxx"));
+    }
+    
+    @Test
+    public void testPatternize()
+    {
+        Pattern p = CrossOriginFilter.patternize(Arrays.asList("GET", "POST", "   "));
+        Assert.assertTrue (CrossOriginFilter.isMethodAllowed(p, "GET"));
+        Assert.assertTrue (CrossOriginFilter.isMethodAllowed(p, "POST"));
+        Assert.assertFalse(CrossOriginFilter.isMethodAllowed(p, "PUT"));
+        Assert.assertFalse(CrossOriginFilter.isMethodAllowed(p, "GETA"));
+        Assert.assertFalse(CrossOriginFilter.isMethodAllowed(p, "AGET"));
+        Assert.assertFalse(CrossOriginFilter.isMethodAllowed(p, ""));
+        
+        
+        p = CrossOriginFilter.patternize(Arrays.asList("  ", "   "));
+        Assert.assertNull(p);
+        Assert.assertFalse(CrossOriginFilter.isMethodAllowed(p, "AGET"));
+        Assert.assertFalse(CrossOriginFilter.isMethodAllowed(p, ""));
     }
     
     public static class ResourceServlet extends HttpServlet
